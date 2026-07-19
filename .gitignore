@@ -29,7 +29,7 @@ individualGolfStats.pdf
 .vscode/
 .idea/
 
-# Streamlit secrets
+# Streamlit secrets (config.toml is safe to commit, secrets.toml is not)
 .streamlit/secrets.toml
 
 # Env vars
