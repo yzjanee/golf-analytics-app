@@ -576,6 +576,115 @@ def detect_milestones(df, score_threshold):
         badges.append(("🔥", f"Best Streak: {max_streak} consecutive good rounds"))
     return badges
 
+# ── Feedback / Google Sheets ──────────────────────────────────────────────────
+def _gsheet_available():
+    try:
+        return ("gcp_service_account" in st.secrets and
+                "feedback_sheet_id" in st.secrets)
+    except Exception:
+        return False
+
+@st.cache_resource(show_spinner=False)
+def _get_feedback_sheet():
+    import gspread
+    from google.oauth2.service_account import Credentials
+    scopes = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]), scopes=scopes
+    )
+    gc = gspread.authorize(creds)
+    return gc.open_by_key(st.secrets["feedback_sheet_id"]).sheet1
+
+def render_feedback_tab():
+    sec("Share Your Feedback", "📬")
+    st.markdown(
+        f"<div style='font-size:.9rem;color:{C['text_mid']};margin-bottom:20px;max-width:560px'>"
+        "Help make Golf Analytics better — every submission is read personally. Takes 30 seconds."
+        "</div>", unsafe_allow_html=True)
+
+    if not _gsheet_available():
+        st.info("Feedback storage is not configured yet. Follow the steps below to enable it.")
+        with st.expander("Setup guide — connect a Google Sheet"):
+            st.markdown("""
+**1 · Create a Google Sheet**
+- Add a header row: `Timestamp | Name | Email | Category | Rating | Message`
+- Copy the Sheet ID from the URL (the long string between `/d/` and `/edit`)
+
+**2 · Create a service account**
+- Go to [Google Cloud Console](https://console.cloud.google.com/) → IAM & Admin → Service Accounts
+- Create a new account → generate a JSON key → download it
+- Enable the **Google Sheets API** and **Google Drive API** for your project
+
+**3 · Share the sheet**
+- Open your Sheet → Share → paste the service account email (e.g. `name@project.iam.gserviceaccount.com`) → Editor
+
+**4 · Add secrets to Streamlit Cloud**
+In your app's Streamlit Cloud dashboard → Settings → Secrets, add:
+```toml
+feedback_sheet_id = "YOUR_SHEET_ID"
+
+[gcp_service_account]
+type = "service_account"
+project_id = "..."
+private_key_id = "..."
+private_key = "-----BEGIN RSA PRIVATE KEY-----\\n...\\n-----END RSA PRIVATE KEY-----\\n"
+client_email = "...@....iam.gserviceaccount.com"
+client_id = "..."
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "..."
+```
+*(Paste the fields directly from the downloaded JSON key)*
+
+**5 · For local dev**, create `.streamlit/secrets.toml` with the same content.
+""")
+        return
+
+    with st.form("feedback_form", clear_on_submit=True):
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            fb_name  = st.text_input("Name (optional)")
+        with fc2:
+            fb_email = st.text_input("Email (optional, for follow-up)")
+        fb_cat = st.selectbox(
+            "Category",
+            ["General Feedback", "Bug Report", "Feature Request", "Other"],
+        )
+        fb_rating = st.select_slider(
+            "Overall rating",
+            options=["⭐ Poor", "⭐⭐ Fair", "⭐⭐⭐ Good",
+                     "⭐⭐⭐⭐ Great", "⭐⭐⭐⭐⭐ Excellent"],
+            value="⭐⭐⭐⭐ Great",
+        )
+        fb_msg = st.text_area(
+            "Your message *",
+            placeholder="What do you think? What could be better?",
+            height=160,
+        )
+        submitted = st.form_submit_button("Submit Feedback", type="primary")
+
+    if submitted:
+        if not fb_msg.strip():
+            st.error("Please enter a message before submitting.")
+        else:
+            try:
+                sheet = _get_feedback_sheet()
+                sheet.append_row([
+                    datetime.datetime.now().isoformat(),
+                    fb_name.strip() or "Anonymous",
+                    fb_email.strip(),
+                    fb_cat,
+                    fb_rating,
+                    fb_msg.strip(),
+                ])
+                st.success("Thank you for your feedback! We appreciate it.")
+            except Exception as e:
+                st.error(f"Could not save feedback — please try again later. ({e})")
+
 # ── Cached ML ─────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def run_ml(X_tup, y_score_tup, y_class_tup):
@@ -1013,7 +1122,7 @@ if mode == "Team" and "Player" in df.columns:
                .rename(columns={"Avg_Score":"Avg Score","GIR":"GIR%",
                                  "FIR":"FIR%","UpDown":"Up&Down%"}))
 
-    tA, tB, tC = st.tabs(["🏆 Leaderboard", "📊 Stat Comparison", "📈 Score Trends"])
+    tA, tB, tC, tD = st.tabs(["🏆 Leaderboard", "📊 Stat Comparison", "📈 Score Trends", "📬 Feedback"])
 
     with tA:
         k1, k2, k3 = st.columns(3)
@@ -1078,6 +1187,9 @@ if mode == "Team" and "Player" in df.columns:
         fig.update_layout(**CL(height=420), yaxis_autorange="reversed")
         st.plotly_chart(fig, width="stretch")
 
+    with tD:
+        render_feedback_tab()
+
     st.stop()
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1114,9 +1226,9 @@ x_axis   = df["Date"].dt.strftime("%b %d") if has_date else df["Round"].astype(s
 x_title  = "Date" if has_date else "Round"
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 Overview", "📈 Season Trends", "🎯 Statistics",
-    "🤖 ML Models", "🔍 SHAP", "💡 Recommendations",
+    "🤖 ML Models", "🔍 SHAP", "💡 Recommendations", "📬 Feedback",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1837,6 +1949,9 @@ with tab6:
         st.download_button("📊 Export Data (.csv)", data=df.to_csv(index=False),
                            file_name="golf_data_export.csv",
                            mime="text/csv", width="stretch")
+
+with tab7:
+    render_feedback_tab()
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
