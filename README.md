@@ -1,5 +1,8 @@
 # ⛳ Golf Performance Analytics
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://golf-analytics-app.streamlit.app)
+[![License: MIT](https://img.shields.io/badge/License-MIT-16a34a.svg)](LICENSE)
+
 A machine learning web app that turns raw golf statistics into personalized practice priorities and score predictions. Built originally to help my high school varsity golf team prepare for the season — now open-sourced so any player or team can use it.
 
 ---
