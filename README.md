@@ -72,6 +72,10 @@ Instead of guessing, I built this app to run machine learning on round-by-round 
 
 ## Quick Start
 
+**Try it live** → [golf-analytics-app-hg6jq6zwr2rvheo7ackfax.streamlit.app](https://golf-analytics-app-hg6jq6zwr2rvheo7ackfax.streamlit.app)
+
+Or run locally:
+
 ```bash
 git clone https://github.com/yzjanee/golf-analytics-app.git
 cd golf-analytics-app
